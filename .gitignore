@@ -1,0 +1,42 @@
+# Entorno virtual
+venv/
+.env
+.venv
+env/
+bin/
+lib/
+share/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Streamlit
+.streamlit/
+
+# Datos (IMPORTANTE: No subir datos sensibles)
+data/*.xlsx
+data/*.csv
+data/*.json
+
+# IDEs
+.vscode/
+.idea/
+.DS_Store
