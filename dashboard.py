@@ -1,198 +1,139 @@
 import streamlit as st
-import plotly.express as px
 import pandas as pd
-from src.config import PAGE_TITLE, LAYOUT, COLS_TO_SHOW, COLOR_MAP, COLOR_SEQUENCE, STATUS_MAPPING
-from src.data_processor import load_and_clean_data, get_kpis
+from src.config import (
+    PAGE_TITLE,
+    LAYOUT,
+    DEFAULT_KOBO_BASE_URL,
+    DEFAULT_KOBO_API_TOKEN,
+)
+from src.data_processor import (
+    load_and_clean_data,
+    load_consolidated_dataset,
+)
+from src.reports import get_kpis
+from src.kobo_client import KoboAPIClient
+from src.ui.charts import (
+    create_temporal_chart,
+    create_typology_chart,
+)
+from src.ui.filters import (
+    render_data_source_sidebar,
+    apply_global_filters,
+)
+from src.ui.tables import (
+    render_planned_vs_executed_section,
+    render_control_no_response_section,
+    render_detailed_table_section,
+)
 
 # Configuración de la página
 st.set_page_config(page_title=PAGE_TITLE, layout=LAYOUT)
 
-# --- Carga de datos ---
-@st.cache_data
-def get_cached_data():
-    return load_and_clean_data()
+st.title(PAGE_TITLE)
+st.caption("Consolidación Anual (2025) y Primer Semestre (2026) con Soporte Multi-Versión Kobo (V1 → V4)")
 
-data = get_cached_data()
+# --- Sidebar: Selección de Origen de Datos ---
+kobo_token = DEFAULT_KOBO_API_TOKEN
+kobo_url = DEFAULT_KOBO_BASE_URL
+client = KoboAPIClient(base_url=kobo_url, token=kobo_token)
+
+source_config = render_data_source_sidebar(client)
+data_source = source_config["data_source"]
+survey_family = source_config.get("survey_family", "ALL")
+single_asset_uid = source_config["single_asset_uid"]
+selected_asset_uids = source_config["selected_asset_uids"]
+
+
+# --- Carga de datos con Caché ---
+@st.cache_data(ttl=600)
+def fetch_dashboard_data(mode, family, single_uid, multi_uids, token, url):
+    if mode == "Formulario Individual":
+        return load_and_clean_data(
+            source_type="kobo",
+            kobo_asset_uid=single_uid,
+            kobo_token=token,
+            kobo_base_url=url,
+        )
+    else:
+        return load_consolidated_dataset(
+            source_type="kobo",
+            kobo_asset_uids=multi_uids,
+            kobo_token=token,
+            kobo_base_url=url,
+            auto_detect_all=(multi_uids is None),
+            survey_family=family,
+        )
+
+
+data = fetch_dashboard_data(
+    data_source, survey_family, single_asset_uid, selected_asset_uids, kobo_token, kobo_url
+)
 
 if data.empty:
-    st.warning("No se pudieron cargar datos. Asegúrese de que los archivos .xlsx estén en la carpeta /data.")
+    st.warning(
+        "No se obtuvieron registros. Verifique la selección de fuente o los parámetros de conexión."
+    )
 else:
     # --- Sidebar - Filtros Globales ---
-    st.sidebar.header("Filtros Globales")
-    
-    tipos_selected = st.sidebar.multiselect(
-        "Tipo de Encuesta", 
-        options=data['Tipo_Encuesta'].unique(), 
-        default=list(data['Tipo_Encuesta'].unique())
-    )
-    
-    semestres_selected = st.sidebar.multiselect(
-        "Semestre", 
-        options=data['Semestre'].unique(), 
-        default=list(data['Semestre'].unique())
-    )
-    
-    encuestadores_list = sorted(data['encuestador'].dropna().unique())
-    encuestador_selected = st.sidebar.selectbox("Seleccionar Encuestador", options=["Todos"] + encuestadores_list)
+    df_filtered = apply_global_filters(data)
 
-    df_filtered = data[
-        (data['Tipo_Encuesta'].isin(tipos_selected)) &
-        (data['Semestre'].isin(semestres_selected))
-    ]
-    
-    if encuestador_selected != "Todos":
-        df_filtered = df_filtered[df_filtered['encuestador'] == encuestador_selected]
-
-    st.title(PAGE_TITLE)
     st.markdown("---")
 
-    # --- KPIs ---
+    # --- KPIs Principales ---
     kpis = get_kpis(df_filtered)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2 = st.columns(2)
     with col1:
-        st.metric("Total Asignadas", f"{kpis['total_asignadas']:,}")
+        st.metric("Controles Evaluados", f"{kpis['controles_evaluados']:,}")
     with col2:
-        st.metric("Encuestas Efectivas", f"{kpis['encuestas_efectivas']:,}")
-    with col3:
-        st.metric("No Respuestas", f"{kpis['no_respuestas']:,}", delta_color="inverse")
-    with col4:
-        st.metric("Porcentaje Efectividad", f"{kpis['porcentaje_efectividad']:.2f} %")
-
-    st.markdown("---")
-
-    # --- Visualizaciones ---
-    st.subheader("Rendimiento por Encuestador")
-    bar_data = df_filtered.copy()
-    bar_data['Estatus_Resumen'] = bar_data['entrevista'].map({1: 'Efectivas', 0: 'No Respuestas'})
-    
-    # Agrupar datos para que las etiquetas de texto muestren el total correcto
-    bar_data_grouped = bar_data.groupby(['encuestador', 'Estatus_Resumen']).size().reset_index(name='Cantidad')
-    
-    fig_bar = px.bar(
-        bar_data_grouped, 
-        y='encuestador', 
-        x='Cantidad',
-        color='Estatus_Resumen',
-        orientation='h',
-        title="Efectivas vs No Respuestas",
-        labels={'encuestador': 'Nombre del Encuestador', 'Cantidad': 'Cantidad de Encuestas'},
-        color_discrete_map=COLOR_MAP,
-        height=min(400 + len(bar_data_grouped['encuestador'].unique()) * 20, 1000), # Altura dinámica
-        text_auto=True
-    )
-    fig_bar.update_layout(
-        barmode='stack', 
-        yaxis={'categoryorder':'total ascending'},
-        uniformtext_minsize=8, 
-        uniformtext_mode='hide'
-    )
-    fig_bar.update_traces(textposition='inside', textangle=0)
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("---")
-    st.subheader("Análisis de No Respuestas")
-    df_no_resp = df_filtered[df_filtered['entrevista'] == 0].copy()
-    
-    if not df_no_resp.empty and 'estatusentrevista' in df_no_resp.columns:
-        # Apply mapping to show both code and full name (e.g. "OA - Ocupante Ausente")
-        df_no_resp['estatusentrevista'] = df_no_resp['estatusentrevista'].apply(
-            lambda x: f"{x} - {STATUS_MAPPING[x]}" if x in STATUS_MAPPING else x
+        st.metric(
+            "Porcentaje de No Respuesta",
+            f"{kpis['porcentaje_no_respuesta']:.2f} %",
+            delta_color="inverse",
         )
-        
-        col_chart, col_totals = st.columns([1.5, 1])
-        
-        with col_chart:
-            fig_donut = px.pie(
-                df_no_resp, 
-                names='estatusentrevista', 
-                hole=0.6,
-                title="Distribución de Motivos",
-                color_discrete_sequence=COLOR_SEQUENCE,
-                height=450
-            )
-            fig_donut.update_layout(
-                margin=dict(t=40, b=90, l=120, r=30),
-                legend=dict(
-                    orientation="v", 
-                    yanchor="middle", 
-                    y=0.5, 
-                    xanchor="right", 
-                    x=-0.1,
-                    valign="middle"
-                )
-            )
-            st.plotly_chart(fig_donut, use_container_width=True)
-        
-        with col_totals:
-            st.markdown("<br>", unsafe_allow_html=True) # Align with chart title
-            # Gran Total de No Respuestas
-            total_no_resp = df_no_resp.shape[0]
-            st.markdown(
-                f"""
-                <div style="
-                    background-color: #34495e;
-                    padding: 8px;
-                    border-radius: 6px;
-                    text-align: center;
-                    color: white;
-                    margin-bottom: 15px;
-                    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-                ">
-                    <div style="font-size: 0.7rem; font-weight: bold; text-transform: uppercase; opacity: 0.9;">
-                        Total General de No Respuestas
-                    </div>
-                    <div style="font-size: 1.6rem; font-weight: bold;">
-                        {total_no_resp}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            st.markdown("##### Desglose por Motivo:")
-            status_counts = df_no_resp['estatusentrevista'].value_counts()
-            
-            # Use 3 columns inside the totals container
-            sub_cols = st.columns(3)
-            for i, (status, count) in enumerate(status_counts.items()):
-                color = COLOR_SEQUENCE[i % len(COLOR_SEQUENCE)]
-                with sub_cols[i % 3]:
-                    st.markdown(
-                        f"""
-                        <div style="
-                            background-color: {color};
-                            padding: 4px 6px;
-                            border-radius: 4px;
-                            text-align: center;
-                            color: white;
-                            margin-bottom: 6px;
-                            box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-                        ">
-                            <div style="font-size: 0.55rem; font-weight: bold; text-transform: uppercase; margin-bottom: 1px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{status}">
-                                {status}
-                            </div>
-                            <div style="font-size: 1.0rem; font-weight: bold;">
-                                {count}
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-    else:
-        st.info("No hay datos de 'No Respuesta' para mostrar.")
 
-    # --- Tabla Detallada ---
     st.markdown("---")
-    st.subheader("Detalle de Registros Filtrados")
-    cols_present = [c for c in COLS_TO_SHOW if c in df_filtered.columns]
-    st.dataframe(df_filtered[cols_present], width='stretch', hide_index=True) # Fixed deprecation warning
 
-# Instrucciones en el Sidebar
+    # --- Comparativa Temporal por Semestre ---
+    if "Semestre" in df_filtered.columns and "entrevista" in df_filtered.columns:
+        st.subheader("Evolución y Comparativa Temporal (2025 - 2026)")
+        fig_sem = create_temporal_chart(df_filtered)
+        st.plotly_chart(fig_sem, use_container_width=True)
+        st.markdown("---")
+
+    # --- Clasificación por Tipología de Vivienda ---
+    if "tipologia_vivienda" in df_filtered.columns:
+        st.subheader("Clasificación por Tipología de Vivienda (Esquema V1 → V4)")
+        col_tipo_chart, col_tipo_summary = st.columns([1.5, 1])
+
+        tipologia_counts = df_filtered["tipologia_vivienda"].value_counts().reset_index()
+        tipologia_counts.columns = ["Tipología", "Cantidad"]
+
+        with col_tipo_chart:
+            fig_tipo = create_typology_chart(tipologia_counts)
+            st.plotly_chart(fig_tipo, use_container_width=True)
+
+        with col_tipo_summary:
+            st.markdown("##### Desglose de Tipologías:")
+            st.dataframe(tipologia_counts, hide_index=True)
+
+        st.markdown("---")
+
+    # --- Cobertura de Controles Planificados vs Levantados ---
+    render_planned_vs_executed_section(df_filtered)
+
+    # --- Reporte por Control y Semestre ---
+    render_control_no_response_section(df_filtered)
+
+    # --- Exportación y Tabla Detallada ---
+    render_detailed_table_section(df_filtered)
+
+# Información en el Sidebar
 st.sidebar.markdown("---")
 st.sidebar.info("""
-**Instrucciones de ejecución:**
-1. Instale las librerías: `pip install -r requirements.txt`
-2. Ejecute: `streamlit run dashboard.py`
+**Normalización por Encuesta:**
+- **Consolidado General (EHM + ESCA)**: Combina y normaliza todas las encuestas de 2025 y 2026.
+- **Encuestas EHM**: Filtra y normaliza únicamente encuestas EHM (V1 a V4, Estándar y Ampliada).
+- **Encuestas ESCA**: Filtra y normaliza únicamente encuestas ESCA (V1 a V4, Estándar y Ampliada).
+- **Formulario Individual**: Analiza un formulario específico en tiempo real.
 """)

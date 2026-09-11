@@ -27,6 +27,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.parquet
 
 # Streamlit
 .streamlit/

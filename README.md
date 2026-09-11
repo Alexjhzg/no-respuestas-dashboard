@@ -1,4 +1,4 @@
-# Control de Encuestadores INE - 2025 📊
+# Registros no respuesta por control
 
 ## Descripción del Proyecto
 Este proyecto es una aplicación web interactiva desarrollada con **Streamlit** para el monitoreo y control en tiempo real de los operativos de campo del **Instituto Nacional de Estadística (INE)** para el periodo 2025-2026.
