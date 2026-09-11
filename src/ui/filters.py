@@ -24,9 +24,9 @@ def render_data_source_sidebar(client: KoboAPIClient) -> Dict[str, Any]:
     data_source = st.sidebar.radio(
         "Seleccionar Origen:",
         options=[
-            "Consolidado General (EHM + ESCA)",
             "Encuestas EHM (Todas las Versiones)",
             "Encuestas ESCA (Todas las Versiones)",
+            "Consolidado General (EHM + ESCA)",
             "Formulario Individual",
         ],
         index=0,
@@ -40,6 +40,8 @@ def render_data_source_sidebar(client: KoboAPIClient) -> Dict[str, Any]:
         survey_family = "EHM"
     elif data_source == "Encuestas ESCA (Todas las Versiones)":
         survey_family = "ESCA"
+    elif data_source == "Consolidado General (EHM + ESCA)":
+        survey_family = "ALL"
 
     try:
         assets = fetch_cached_assets(client.token, client.base_url)
@@ -99,7 +101,6 @@ def apply_global_filters(df_raw: pd.DataFrame) -> pd.DataFrame:
         st.session_state["flt_municipio"] = []
         st.session_state["flt_control"] = []
         st.session_state["flt_tipo"] = []
-        st.session_state["flt_encuestador"] = "Todos"
         st.session_state["reset_filters_flag"] = False
 
     data = df_raw.copy()
@@ -120,6 +121,7 @@ def apply_global_filters(df_raw: pd.DataFrame) -> pd.DataFrame:
     semestres_canonicos = [
         "Segundo Semestre 2025",
         "Primer Semestre 2026",
+        "Segundo Semestre 2026",
     ]
     semestres_presentes = set(df_raw["Semestre"].dropna().unique()) if "Semestre" in df_raw.columns else set()
     semestres_opciones = semestres_canonicos.copy()
@@ -231,23 +233,6 @@ def apply_global_filters(df_raw: pd.DataFrame) -> pd.DataFrame:
 
     if tipos_selected:
         data = data[data["Tipo_Encuesta"].isin(tipos_selected)]
-
-    # 6. Encuestador
-    encuestadores_list = (
-        sorted(data["encuestador"].dropna().unique())
-        if "encuestador" in data.columns else []
-    )
-
-    encuestador_options = ["Todos"] + encuestadores_list
-    sanitize_key("flt_encuestador", encuestador_options)
-    encuestador_selected = st.sidebar.selectbox(
-        "Encuestador:",
-        options=encuestador_options,
-        key="flt_encuestador",
-    )
-
-    if encuestador_selected != "Todos":
-        data = data[data["encuestador"] == encuestador_selected]
 
     st.sidebar.markdown("")
     col_f1, col_f2 = st.sidebar.columns(2)

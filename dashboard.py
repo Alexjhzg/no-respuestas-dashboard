@@ -132,8 +132,8 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.info("""
 **Normalización por Encuesta:**
-- **Consolidado General (EHM + ESCA)**: Combina y normaliza todas las encuestas de 2025 y 2026.
 - **Encuestas EHM**: Filtra y normaliza únicamente encuestas EHM (V1 a V4, Estándar y Ampliada).
 - **Encuestas ESCA**: Filtra y normaliza únicamente encuestas ESCA (V1 a V4, Estándar y Ampliada).
+- **Consolidado General (EHM + ESCA)**: Combina y normaliza todas las encuestas de 2025 y 2026.
 - **Formulario Individual**: Analiza un formulario específico en tiempo real.
 """)

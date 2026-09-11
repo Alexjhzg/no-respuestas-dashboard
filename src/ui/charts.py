@@ -35,7 +35,7 @@ def create_temporal_chart(df: pd.DataFrame) -> go.Figure:
     sem_agg["Pct_No_Respuesta"] = (sem_agg["No_Diligenciadas"] / sem_agg["Total"] * 100).round(1)
 
     # Orden cronológico estandarizado por semestre
-    sem_order = ["Segundo Semestre 2025", "Primer Semestre 2026"]
+    sem_order = ["Segundo Semestre 2025", "Primer Semestre 2026", "Segundo Semestre 2026"]
     present_order = [s for s in sem_order if s in sem_agg["Semestre"].values]
     for s in sem_agg["Semestre"].values:
         if s not in present_order:

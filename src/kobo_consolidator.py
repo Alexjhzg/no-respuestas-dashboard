@@ -70,7 +70,10 @@ def infer_period_from_record(record: Dict[str, Any]) -> Dict[str, str]:
         else:
             semester = "Primer Semestre 2025"
     elif year == "2026":
-        semester = "Primer Semestre 2026"
+        if month and month > 6:
+            semester = "Segundo Semestre 2026"
+        else:
+            semester = "Primer Semestre 2026"
     else:
         semester = "Primer Semestre 2025"
 
